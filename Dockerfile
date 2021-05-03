@@ -1,0 +1,90 @@
+# DAIN-APP Dockerfile for Anaconda with PyTorch
+# Copyright (C) 2020, 2021  Chelsea E. Manning
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+FROM xychelsea/anaconda3:v0.3
+LABEL description="DAIN-APP Vanilla Container"
+
+# $ docker build --network=host -t xychelsea/dain-app:latest -f Dockerfile .
+# $ docker run --rm -it xychelsea/dain-app:latest /bin/bash
+# $ docker push xychelsea/dain-app:latest
+
+ENV ANACONDA_ENV=DAIN-APP
+ENV DAIN_PATH=/usr/local/dain-app
+ENV DAIN_WORKSPACE=${DAIN_PATH}/workspace
+
+# Start as root
+USER root
+
+# Update packages
+RUN apt-get update --fix-missing \
+    && apt-get -y upgrade \
+    && apt-get -y dist-upgrade
+
+# Install dependencies
+RUN apt-get -y install git
+
+# Create DAIN-APP directory
+RUN mkdir -p ${DAIN_PATH} \
+    && fix-permissions ${DAIN_PATH}
+
+# Switch to user "anaconda"
+USER ${ANACONDA_UID}
+WORKDIR ${HOME}
+
+# Update Anaconda
+RUN conda update -c defaults conda
+
+# Install DAIN-APP
+RUN conda create -c pytorch -n ${ANACONDA_ENV} python=3.8.5 \
+	numba=0.51.2 \
+	numpy=1.19.2 \
+	pillow=8.0.1 \
+	pyqt=5.12.3 \
+	python=3.8.5 \
+	scikit-learn=0.23.2 \
+	scipy=1.6.3 \
+	pytorch=1.7.0 \
+	torchvision=0.8.1 \
+	tqdm=4.51.0
+
+RUN conda run -n ${ANACONDA_ENV} pip3 install \
+	opencv-python==4.4.0.46 \
+	opencv-contrib-python==4.4.0.46
+
+RUN git clone git://github.com/BurguerJohn/Dain-App.git ${DAIN_PATH} \
+    && mkdir -p ${DAIN_WORKSPACE} \
+    && rm -rvf ${ANACONDA_PATH}/share/jupyter/lab/staging
+
+# Switch back to root
+USER root
+
+RUN fix-permissions ${DAIN_WORKSPACE} \
+    && ln -s ${DAIN_PATH} ${HOME}/dain-app \
+    && ln -s ${DAIN_WORKSPACE} ${HOME}/workspace
+
+# Clean Anaconda
+RUN conda clean -afy
+
+# Clean packages and caches
+RUN apt-get --purge -y autoremove git \
+    && rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/* \
+    && rm -rvf /home/${ANACONDA_PATH}/.cache/yarn \
+    && fix-permissions ${HOME} \
+    && fix-permissions ${ANACONDA_PATH}
+
+# Re-activate user "anaconda"
+USER $ANACONDA_UID
+WORKDIR $HOME
